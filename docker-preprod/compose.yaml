@@ -35,12 +35,12 @@ services:
     depends_on:
       database:
         condition: service_healthy
-    healthcheck:
-      test: ["CMD", "php", "bin/console", "doctrine:query:sql", "SELECT 1"]
-      interval: 10s
-      timeout: 5s
-      retries: 5
-      start_period: 30s
+    # healthcheck:
+    #   test: ["CMD", "php", "bin/console", "doctrine:query:sql", "SELECT 1"]
+    #   interval: 10s
+    #   timeout: 5s
+    #   retries: 5
+    #   start_period: 30s
     volumes:
       - ../autodeclic-symfony:/app
       - ~/.config/gcloud:/root/.config/gcloud
