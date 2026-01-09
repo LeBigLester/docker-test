@@ -1,0 +1,63 @@
+FROM dunglas/frankenphp:1-php8.3 AS frankenphp_base
+
+WORKDIR /app
+
+VOLUME /app/var/
+
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    acl \
+    file \
+    gettext \
+    git \
+    supervisor \
+    curl \
+    ca-certificates \
+    gnupg \
+    default-mysql-client \
+    && rm -rf /var/lib/apt/lists/*
+
+# Install Google Cloud CLI
+RUN curl https://packages.cloud.google.com/apt/doc/apt-key.gpg | gpg --dearmor -o /usr/share/keyrings/cloud.google.gpg \
+    && echo "deb [signed-by=/usr/share/keyrings/cloud.google.gpg] https://packages.cloud.google.com/apt cloud-sdk main" | tee -a /etc/apt/sources.list.d/google-cloud-sdk.list \
+    && apt-get update \
+    && apt-get install -y google-cloud-cli \
+    && rm -rf /var/lib/apt/lists/*
+
+RUN set -eux; \
+    install-php-extensions \
+        @composer \
+        apcu \
+        intl \
+        opcache \
+        zip \
+        pdo_mysql \
+        gd \
+        pdo_pgsql
+
+ENV COMPOSER_ALLOW_SUPERUSER=1
+ENV PHP_INI_SCAN_DIR=":$PHP_INI_DIR/app.conf.d"
+
+COPY --link frankenphp/conf.d/10-app.ini $PHP_INI_DIR/app.conf.d/
+
+# Entrypoint neutre, pas de frankenphp run
+COPY --link --chmod=755 frankenphp/docker-entrypoint.sh /usr/local/bin/docker-entrypoint
+ENTRYPOINT ["docker-entrypoint"]
+
+COPY --link composer.* symfony.* ./
+RUN set -eux; \
+    composer install --no-cache --prefer-dist --no-dev --no-autoloader --no-scripts --no-progress
+
+COPY --link . ./
+RUN rm -Rf frankenphp/
+
+COPY --link frankenphp/supervisor/conf.d/ /etc/supervisor/conf.d/
+
+RUN set -eux; \
+    mkdir -p var/cache var/log var/backups; \
+    composer dump-autoload --classmap-authoritative --no-dev; \
+    composer dump-env prod; \
+    composer run-script --no-dev post-install-cmd; \
+    php bin/console lexik:jwt:generate-keypair --overwrite; \
+    chmod +x bin/console; sync;
+
+CMD ["php", "-S", "0.0.0.0:80", "-t", "public"]
